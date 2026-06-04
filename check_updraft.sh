@@ -25,7 +25,8 @@ DATE_LABEL=$(date '+%Y-%m-%d %H:%M')
 declare -a FAILURES=()
 declare -a WARNINGS=()
 declare -a OK=()
-declare -a SKIPPED=()   # no UpdraftPlus
+declare -a SKIPPED=()       # no UpdraftPlus plugin
+declare -a UNCONFIGURED=()  # UpdraftPlus active but never set up
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
@@ -55,6 +56,7 @@ get_updraft_option() {
     local path="$1"
     $WP_CLI eval '
 $opt = get_option("updraftplus");
+if ($opt === false) { echo json_encode(array("_not_configured" => true)); exit; }
 $history = get_option("updraftplus_backup_history", array());
 if (!is_array($opt)) $opt = array();
 $opt["backup_history"] = is_array($history) ? $history : array();
@@ -145,6 +147,13 @@ for wp_path in "${WP_DIRS[@]}"; do
         continue
     fi
 
+    # UpdraftPlus installed but never configured
+    if echo "$option_json" | grep -q '"_not_configured"'; then
+        UNCONFIGURED+=("$site_label")
+        log "UNCFG $site_label (UpdraftPlus not configured)"
+        continue
+    fi
+
     last_ts=$(extract_last_backup_time "$option_json")
     status=$(extract_last_backup_succeeded "$option_json")
     age=$(age_string "$last_ts")
@@ -191,12 +200,17 @@ build_report() {
         for s in "${OK[@]}"; do report+="  ✓ $s${nl}"; done
     fi
 
+    if [ ${#UNCONFIGURED[@]} -gt 0 ]; then
+        report+="${nl}NOT CONFIGURED — UpdraftPlus active but never set up (${#UNCONFIGURED[@]})${nl}"
+        for s in "${UNCONFIGURED[@]}"; do report+="  - $s${nl}"; done
+    fi
+
     if [ ${#SKIPPED[@]} -gt 0 ]; then
         report+="${nl}No UpdraftPlus (${#SKIPPED[@]} sites skipped)${nl}"
     fi
 
     report+="${nl}────────────────────────────────────────${nl}"
-    report+="Total monitored: $(( ${#FAILURES[@]} + ${#WARNINGS[@]} + ${#OK[@]} )) | Skipped: ${#SKIPPED[@]}${nl}"
+    report+="Total monitored: $(( ${#FAILURES[@]} + ${#WARNINGS[@]} + ${#OK[@]} )) | Unconfigured: ${#UNCONFIGURED[@]} | Skipped: ${#SKIPPED[@]}${nl}"
     echo "$report"
 }
 
