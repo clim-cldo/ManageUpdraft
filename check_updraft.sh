@@ -97,7 +97,7 @@ try:
     errors  = d.get('errors', [])
     msg     = d.get('lastmessage', '').lower()
     # Only fail if errors array is non-empty OR last message explicitly says failed
-    # success=0 with "succeeded (with warnings)" is still a success
+    # Note: success=0 with warnings in lastmessage is still considered OK
     if errors or 'failed' in msg:
         print('failed')
     else:
