@@ -93,15 +93,14 @@ extract_last_backup_succeeded() {
 import sys, json
 try:
     d = json.load(sys.stdin)
-    success = d.get('success', 0)
-    errors  = d.get('errors', [])
-    msg     = d.get('lastmessage', '').lower()
-    # Only fail if errors array is non-empty OR last message explicitly says failed
-    # Note: success=0 with warnings in lastmessage is still considered OK
-    if errors or 'failed' in msg:
+    msg = d.get('lastmessage', '').lower()
+    # Trust lastmessage: "succeeded" covers both clean and with-warnings runs
+    if 'succeeded' in msg:
+        print('ok')
+    elif 'failed' in msg:
         print('failed')
     else:
-        print('ok')
+        print('unknown')
 except Exception:
     print('unknown')
 " 2>/dev/null || echo "unknown"
