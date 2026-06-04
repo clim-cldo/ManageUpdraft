@@ -95,11 +95,13 @@ try:
     d = json.load(sys.stdin)
     success = d.get('success', 0)
     errors  = d.get('errors', [])
-    msg     = d.get('lastmessage', '')
-    if int(success) == 1 and not errors:
-        print('ok')
-    else:
+    msg     = d.get('lastmessage', '').lower()
+    # Only fail if errors array is non-empty OR last message explicitly says failed
+    # success=0 with "succeeded (with warnings)" is still a success
+    if errors or 'failed' in msg:
         print('failed')
+    else:
+        print('ok')
 except Exception:
     print('unknown')
 " 2>/dev/null || echo "unknown"
