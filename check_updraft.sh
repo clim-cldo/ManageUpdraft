@@ -50,10 +50,16 @@ updraft_active() {
     $WP_CLI plugin is-active updraftplus --path="$path" --allow-root 2>/dev/null
 }
 
-# ── pull UpdraftPlus options from DB ─────────────────────────────
+# ── pull UpdraftPlus options from DB via wp eval (handles PHP serialized data) ──
 get_updraft_option() {
     local path="$1"
-    $WP_CLI option get updraftplus --path="$path" --allow-root --format=json 2>/dev/null
+    $WP_CLI eval '
+$opt = get_option("updraftplus");
+$history = get_option("updraftplus_backup_history", array());
+if (!is_array($opt)) $opt = array();
+$opt["backup_history"] = is_array($history) ? $history : array();
+echo json_encode($opt);
+' --path="$path" --allow-root 2>/dev/null
 }
 
 # ── parse a PHP serialized/JSON timestamp field ──────────────────
@@ -78,16 +84,18 @@ extract_last_backup_succeeded() {
 import sys, json
 try:
     d = json.load(sys.stdin)
-    # job_times contains per-component timestamps; failures leave error keys
-    errors = d.get('backup_history', {})
-    # Check the most recent history entry for 'failed'
     history = d.get('backup_history', {})
     if not history:
         print('unknown')
         sys.exit(0)
-    latest_ts = max(history.keys(), key=lambda x: int(x))
+    # history keys are unix timestamps; find the latest
+    latest_ts = max(history.keys(), key=lambda x: float(x))
     entry = history[latest_ts]
-    if isinstance(entry, dict) and entry.get('failed'):
+    if not isinstance(entry, dict):
+        print('unknown')
+        sys.exit(0)
+    # UpdraftPlus marks failures with a 'failed' key or missing backup components
+    if entry.get('failed') or entry.get('jobstatus') == 'failed':
         print('failed')
     else:
         print('ok')
