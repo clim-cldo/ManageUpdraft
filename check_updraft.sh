@@ -55,12 +55,19 @@ updraft_active() {
 get_updraft_option() {
     local path="$1"
     $WP_CLI eval '
-$opt = get_option("updraftplus");
-if ($opt === false) { echo json_encode(array("_not_configured" => true)); exit; }
-$history = get_option("updraftplus_backup_history", array());
-if (!is_array($opt)) $opt = array();
-$opt["backup_history"] = is_array($history) ? $history : array();
-echo json_encode($opt);
+$last    = get_option("updraft_last_backup", false);
+$history = get_option("updraft_backup_history", array());
+if ($last === false && empty($history)) {
+    echo json_encode(array("_not_configured" => true));
+    exit;
+}
+echo json_encode(array(
+    "last_backup_time" => isset($last["backup_time"]) ? intval($last["backup_time"]) : 0,
+    "success"          => isset($last["success"])     ? intval($last["success"])      : 0,
+    "errors"           => isset($last["errors"])      ? $last["errors"]               : array(),
+    "lastmessage"      => get_option("updraft_lastmessage", ""),
+    "backup_history"   => is_array($history) ? $history : array(),
+));
 ' --path="$path" --allow-root 2>/dev/null
 }
 
@@ -86,21 +93,13 @@ extract_last_backup_succeeded() {
 import sys, json
 try:
     d = json.load(sys.stdin)
-    history = d.get('backup_history', {})
-    if not history:
-        print('unknown')
-        sys.exit(0)
-    # history keys are unix timestamps; find the latest
-    latest_ts = max(history.keys(), key=lambda x: float(x))
-    entry = history[latest_ts]
-    if not isinstance(entry, dict):
-        print('unknown')
-        sys.exit(0)
-    # UpdraftPlus marks failures with a 'failed' key or missing backup components
-    if entry.get('failed') or entry.get('jobstatus') == 'failed':
-        print('failed')
-    else:
+    success = d.get('success', 0)
+    errors  = d.get('errors', [])
+    msg     = d.get('lastmessage', '')
+    if int(success) == 1 and not errors:
         print('ok')
+    else:
+        print('failed')
 except Exception:
     print('unknown')
 " 2>/dev/null || echo "unknown"
@@ -157,6 +156,7 @@ for wp_path in "${WP_DIRS[@]}"; do
     last_ts=$(extract_last_backup_time "$option_json")
     status=$(extract_last_backup_succeeded "$option_json")
     age=$(age_string "$last_ts")
+    lastmsg=$(echo "$option_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('lastmessage',''))" 2>/dev/null)
 
     if [ "$last_ts" -eq 0 ]; then
         WARNINGS+=("$site_label — no backup on record")
@@ -167,13 +167,13 @@ for wp_path in "${WP_DIRS[@]}"; do
     age_days=$(( (NOW - last_ts) / 86400 ))
 
     if [ "$status" = "failed" ]; then
-        FAILURES+=("$site_label — last backup FAILED ($age)")
+        FAILURES+=("$site_label — FAILED ($age) | $lastmsg")
         log "FAIL  $site_label — last backup failed ($age)"
     elif [ "$age_days" -ge "$MAX_BACKUP_AGE_DAYS" ]; then
-        WARNINGS+=("$site_label — last backup $age (older than ${MAX_BACKUP_AGE_DAYS}d threshold)")
+        WARNINGS+=("$site_label — stale ($age, threshold ${MAX_BACKUP_AGE_DAYS}d) | $lastmsg")
         log "WARN  $site_label — stale backup ($age)"
     else
-        OK+=("$site_label — OK ($age)")
+        OK+=("$site_label — OK ($age) | $lastmsg")
         log "OK    $site_label ($age)"
     fi
 done
