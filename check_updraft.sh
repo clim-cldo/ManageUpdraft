@@ -12,7 +12,7 @@ SEARCH_PATHS=(
 
 ALERT_EMAIL="admin@example.com"
 FROM_EMAIL="backupmonitor@$(hostname -f)"
-WP_CLI="wp"                      # path to wp-cli binary
+WP_CLI="/opt/cpanel/ea-php83/root/usr/bin/php /usr/local/bin/wp"  # cPanel: use PHP with proc_open enabled
 MAX_BACKUP_AGE_DAYS=2            # alert if last backup older than this
 LOG_FILE="/var/log/updraft_monitor.log"
 SEND_SUMMARY=true                # set false to only email on failures
